@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/pobidoq-react-app/static/css/main.225624b8.css",
+    "main.js": "/pobidoq-react-app/static/js/main.bf93220f.js",
+    "index.html": "/pobidoq-react-app/index.html",
+    "main.225624b8.css.map": "/pobidoq-react-app/static/css/main.225624b8.css.map",
+    "main.bf93220f.js.map": "/pobidoq-react-app/static/js/main.bf93220f.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.225624b8.css",
+    "static/js/main.bf93220f.js"
+  ]
+}
