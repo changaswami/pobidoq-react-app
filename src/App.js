@@ -1,645 +1,833 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronRight, Sparkles, Heart, Target, Zap, Book, BarChart3, RefreshCw, MessageCircle, Send, CheckCircle2, Star, Smile, Lightbulb, Compass } from 'lucide-react';
-import './App.css'; // <--- NEW: Import your CSS file here
+import React, { useState, useEffect, useCallback } from 'react';
+import { Sparkles, Loader2, ChevronRight, CheckCircle2, Eye, RefreshCw, BookOpen, Volume2, VolumeX, Users } from 'lucide-react';
+import './index.css';
 
-const PobidoqApp = () => {
-  const [currentStep, setCurrentStep] = useState('welcome');
-  const [userInput, setUserInput] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [aiResponse, setAiResponse] = useState('');
-  const [selectedPath, setSelectedPath] = useState(null);
-  const [journeyEntries, setJourneyEntries] = useState([]);
-  const [showCelebration, setShowCelebration] = useState(false);
-  const [typingText, setTypingText] = useState('');
-  const [showFloatingEmojis, setShowFloatingEmojis] = useState([]);
-  const [inputFeedback, setInputFeedback] = useState('');
-  const [pulseElement, setPulseElement] = useState(null);
-  const [userStats, setUserStats] = useState({
-    totalContributions: 0,
-    currentStreak: 1,
-    dominantColor: 'Yellow',
-    colorEvolution: ['Yellow']
-  });
-
-  const colorPaths = {
-    Red: { 
-      emoji: '🔴', 
-      trait: 'Universe', 
-      description: 'Your actions are deeply rooted in your past, shaping your personal story and connections.',
-      gradient: 'from-red-400 to-red-600',
-      particles: '✨🌟💫',
-      sound: 'universe'
-    },
-    Green: { 
-      emoji: '🟢', 
-      trait: 'Game', 
-      description: 'Your choices are part of a larger game, influencing the future and evolving your character.',
-      gradient: 'from-green-400 to-green-600',
-      particles: '🎮🏆🎯',
-      sound: 'game'
-    },
-    Blue: { 
-      emoji: '🔵', 
-      trait: 'Race', 
-      description: 'You seek to master your reality, embracing duties and finding clarity in the silence of your purpose.',
-      gradient: 'from-blue-400 to-blue-600',
-      particles: '🌊⚡🔷',
-      sound: 'race'
-    },
-    Yellow: { 
-      emoji: '🟡', 
-      trait: 'Step', 
-      description: 'Your experience is driven by emotion, listening to your inner questions to transcend limitations.',
-      gradient: 'from-yellow-400 to-yellow-600',
-      particles: '☀️🌻💛',
-      sound: 'step'
+// Sound Manager (moved outside component)
+const SoundManager = {
+  audioContext: null,
+  
+  init() {
+    if (!this.audioContext && (window.AudioContext || window.webkitAudioContext)) {
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
     }
-  };
-
-  const aiInsights = [
-    "Your consistent effort is building strong foundations. What new perspective did you gain?",
-    "That challenge you faced shows remarkable resilience. How will you apply this strength?",
-    "Your mindful approach creates space for deeper understanding. What patterns are emerging?",
-    "Taking action despite uncertainty demonstrates courage. How does this align with your values?",
-    "This reflection reveals your commitment to growth. What question is your heart asking?"
-  ];
-
-  // Typing animation hook
-  useEffect(() => {
-    if (currentStep === 'insight' && aiResponse) {
-      setTypingText('');
-      let i = 0;
-      const timer = setInterval(() => {
-        if (i < aiResponse.length) {
-          setTypingText(aiResponse.substring(0, i + 1));
-          i++;
-        } else {
-          clearInterval(timer);
-        }
-      }, 50);
-      return () => clearInterval(timer);
+  },
+  
+  play(type, enabled = true) {
+    if (!enabled || !this.audioContext) return;
+    
+    try {
+      const oscillator = this.audioContext.createOscillator();
+      const gainNode = this.audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+      
+      const frequencies = {
+        click: 800,
+        transition: 220,
+        insight: 659.25,
+        success: 523.25,
+        complete: 783.99,
+        universe: 392.00,
+        game: 493.88,
+        race: 329.63,
+        step: 440.00
+      };
+      
+      oscillator.frequency.setValueAtTime(
+        frequencies[type] || 440, 
+        this.audioContext.currentTime
+      );
+      
+      oscillator.type = type === 'insight' ? 'sine' : 'triangle';
+      
+      gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.1, this.audioContext.currentTime + 0.1);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+      
+      oscillator.start(this.audioContext.currentTime);
+      oscillator.stop(this.audioContext.currentTime + 0.3);
+      
+      oscillator.onended = () => {
+        oscillator.disconnect();
+        gainNode.disconnect();
+      };
+    } catch (error) {
+      console.warn('Audio playback failed:', error);
     }
-  }, [aiResponse, currentStep]);
+  }
+};
 
-  // Floating emoji animation
-  const createFloatingEmojis = (emojis, count = 5) => {
-    const newEmojis = [];
-    for (let i = 0; i < count; i++) {
-      const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-      newEmojis.push({
-        id: Date.now() + i,
-        emoji,
-        x: Math.random() * window.innerWidth,
-        y: window.innerHeight + 50,
-        delay: i * 200
-      });
-    }
-    setShowFloatingEmojis(newEmojis);
-    setTimeout(() => setShowFloatingEmojis([]), 3000);
-  };
+// Initialize sound on first user interaction
+document.addEventListener('click', () => {
+  SoundManager.init();
+}, { once: true });
 
-  // Input feedback based on content
-  const analyzeInput = (text) => {
-    const positive = ['happy', 'joy', 'success', 'achieve', 'grateful', 'love', 'amazing', 'wonderful'];
-    const challenging = ['difficult', 'hard', 'struggle', 'challenge', 'tough', 'overcome'];
-    const reflective = ['think', 'reflect', 'realize', 'understand', 'learn', 'discover'];
-    
-    const words = text.toLowerCase().split(' ');
-    
-    if (positive.some(word => words.includes(word))) {
-      setInputFeedback('✨ Feeling the positivity!');
-      createFloatingEmojis(['😊', '🌟', '💖', '🎉']);
-    } else if (challenging.some(word => words.includes(word))) {
-      setInputFeedback('💪 Strength in challenges!');
-      createFloatingEmojis(['💪', '⚡', '🔥', '🌟']);
-    } else if (reflective.some(word => words.includes(word))) {
-      setInputFeedback('🤔 Deep thoughts emerging...');
-      createFloatingEmojis(['💭', '🧠', '💡', '✨']);
-    } else if (text.length > 50) {
-      setInputFeedback('📝 Rich story unfolding...');
-    }
-  };
-
-  const simulateAI = async (input) => {
-    setIsProcessing(true);
-    setCurrentStep('processing');
-    
-    // Simulate processing delay with progress
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Simple color classification with enhanced feedback
-    const inputLower = input.toLowerCase();
-    let detectedColor = 'Yellow';
-    
-    if (inputLower.includes('past') || inputLower.includes('memory') || inputLower.includes('relationship')) {
-      detectedColor = 'Red';
-    } else if (inputLower.includes('goal') || inputLower.includes('future') || inputLower.includes('plan')) {
-      detectedColor = 'Green';
-    } else if (inputLower.includes('focus') || inputLower.includes('work') || inputLower.includes('discipline')) {
-      detectedColor = 'Blue';
-    }
-
-    const insight = aiInsights[Math.floor(Math.random() * aiInsights.length)];
-    
-    setAiResponse(insight);
-    setUserStats(prev => ({
-      ...prev,
-      dominantColor: detectedColor,
-      colorEvolution: [...prev.colorEvolution, detectedColor]
-    }));
-    
-    setIsProcessing(false);
-    // After processing, transition to insight screen
-    setCurrentStep('insight'); // <--- ADDED THIS LINE
-  };
-
-  const selectPath = (color) => {
-    setSelectedPath(color);
-    setPulseElement(color);
-    
-    // Show celebration animation
-    setShowCelebration(true);
-    createFloatingEmojis(colorPaths[color].particles.split(''), 8);
-    
-    setTimeout(() => {
-      setCurrentStep('complete');
-      setShowCelebration(false);
-      setPulseElement(null);
-    }, 2000);
-    
-    // Add to journey
-    const newEntry = {
-      id: Date.now(),
-      input: userInput,
-      insight: aiResponse,
-      path: color,
-      timestamp: new Date().toLocaleString()
-    };
-    
-    setJourneyEntries(prev => [newEntry, ...prev]);
-    setUserStats(prev => ({
-      ...prev,
-      totalContributions: prev.totalContributions + 1
-    }));
-  };
-
-  const startNew = () => {
-    setCurrentStep('input');
-    setUserInput('');
-    setAiResponse('');
-    setSelectedPath(null);
-    setInputFeedback('');
-    setTypingText('');
-    setShowFloatingEmojis([]); // Clear floating emojis on new cycle
-  };
-
-  const WelcomeScreen = () => (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(20)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute animate-float opacity-20"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${3 + Math.random() * 4}s`
-            }}
-          >
-            {['✨', '🌟', '💫', '🌱', '💖'][Math.floor(Math.random() * 5)]}
-          </div>
-        ))}
-      </div>
-
-      <div className="max-w-2xl text-center space-y-8 relative z-10">
-        <div className="space-y-4">
-          <div className="text-6xl mb-4 animate-bounce-gentle">🌱</div>
-          <h1 className="text-5xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-gradient">
-            pobidoq
-          </h1>
-          <p className="text-xl text-gray-600 leading-relaxed animate-fade-in-up">
-            Transform your daily moments into meaningful insights. 
-            Share your growth, receive AI guidance, and shape your evolving story.
-          </p>
-        </div>
-        
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 my-8">
-          {Object.entries(colorPaths).map(([color, data], index) => (
-            <div 
-              key={color} 
-              className="bg-white/70 backdrop-blur-sm rounded-2xl p-4 text-center shadow-lg transform hover:scale-110 transition-all duration-300 animate-fade-in-up cursor-pointer hover:shadow-xl"
-              style={{ animationDelay: `${index * 0.2}s` }}
-            >
-              <div className="text-3xl mb-2 animate-pulse-gentle">{data.emoji}</div>
-              <div className="font-semibold text-gray-800">{data.trait}</div>
-            </div>
-          ))}
-        </div>
-        
-        <button
-          onClick={() => setCurrentStep('input')}
-          className="group bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-4 rounded-full text-lg font-semibold shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 animate-pulse-gentle"
-        >
-          Begin Your Journey
-          <ChevronRight className="inline ml-2 group-hover:translate-x-2 transition-transform duration-300" />
-        </button>
-      </div>
-
+// Glass Card Component (moved outside component)
+const GlassCard = ({ children, className = '', style = {} }) => {
+  return (
+    <div 
+      className={`glass-card ${className}`}
+      style={style}
+    >
+      {children}
     </div>
   );
+};
 
-  const InputScreen = () => (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4 relative overflow-hidden">
-      {/* Floating feedback emojis */}
-      {showFloatingEmojis.map(({ id, emoji, x, y, delay }) => (
+// Animated Background Component (moved outside component)
+const AnimatedBackground = ({ type = 'default' }) => {
+  const [particles, setParticles] = useState([]);
+
+  useEffect(() => {
+    const generateParticles = () => {
+      const newParticles = [];
+      const count = type === 'processing' ? 30 : 15;
+      
+      for (let i = 0; i < count; i++) {
+        newParticles.push({
+          id: i,
+          x: Math.random() * 100,
+          y: Math.random() * 100,
+          delay: Math.random() * 5,
+          duration: 3 + Math.random() * 4,
+          emoji: getParticleEmoji(type)
+        });
+      }
+      setParticles(newParticles);
+    };
+
+    const getParticleEmoji = (bgType) => {
+      const emojiMap = {
+        welcome: ['✨', '🌟', '💫', '🌱', '💖'],
+        processing: ['⚡', '🔮', '💎', '🌊', '🔥'],
+        red: ['🔴', '❤️', '🌹', '🔥', '💪'],
+        green: ['🟢', '🌱', '🍃', '🌿', '💚'], 
+        blue: ['🔵', '💙', '🌊', '❄️', '🔷'],
+        yellow: ['🟡', '☀️', '⭐', '💛', '✨'],
+        default: ['✨', '🌟', '💫']
+      };
+      
+      const emojis = emojiMap[bgType] || emojiMap.default;
+      return emojis[Math.floor(Math.random() * emojis.length)];
+    };
+
+    generateParticles();
+  }, [type]);
+
+  return (
+    <div className="animated-background">
+      {particles.map(particle => (
         <div
-          key={id}
-          className="fixed text-2xl pointer-events-none z-50 animate-float-up"
+          key={particle.id}
+          className="particle"
           style={{
-            left: x,
-            top: y,
-            animationDelay: `${delay}ms`
+            left: `${particle.x}%`,
+            top: `${particle.y}%`,
+            animationDelay: `${particle.delay}s`,
+            animationDuration: `${particle.duration}s`
           }}
         >
-          {emoji}
+          {particle.emoji}
         </div>
       ))}
-
-      <div className="max-w-4xl mx-auto relative z-10">
-        {/* Header */}
-        <div className="text-center py-8 animate-slide-down">
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">Share Your Moment</h2>
-          <p className="text-gray-600">What did you do, feel, or learn today?</p>
-          {inputFeedback && (
-            <div className="mt-2 text-sm font-medium text-indigo-600 animate-bounce-gentle">
-              {inputFeedback}
-            </div>
-          )}
-        </div>
-
-        {/* Chat Interface */}
-        <div className="bg-white rounded-3xl shadow-xl overflow-hidden transform hover:shadow-2xl transition-all duration-500 animate-scale-up">
-          <div className="p-6 border-b bg-gradient-to-r from-indigo-50 to-purple-50">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full flex items-center justify-center animate-pulse-gentle">
-                <Sparkles className="text-white w-5 h-5" />
-              </div>
-              <div>
-                <div className="font-semibold text-gray-800">AI Growth Guide</div>
-                <div className="text-sm text-gray-500 animate-typing">Ready to explore your contribution...</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-6 space-y-4">
-            {/* Example prompts */}
-            <div className="grid md:grid-cols-2 gap-3 mb-6">
-              {[
-                { text: "I meditated for 10 minutes and felt more centered", icon: "🧘" },
-                { text: "Had a challenging conversation but learned something new", icon: "💬" },
-                { text: "Completed a difficult project despite feeling overwhelmed", icon: "🎯" },
-                { text: "Took time for self-reflection during my walk", icon: "🚶" }
-              ].map((prompt, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setUserInput(prompt.text);
-                    analyzeInput(prompt.text);
-                  }}
-                  className="text-left p-4 bg-gray-50 hover:bg-indigo-50 rounded-2xl transition-all duration-300 text-sm text-gray-700 transform hover:scale-105 hover:shadow-md group animate-fade-in-up"
-                  style={{ animationDelay: `${i * 0.1}s` }}
-                >
-                  <div className="flex items-center space-x-2">
-                    <span className="text-lg group-hover:animate-bounce-gentle">{prompt.icon}</span>
-                    <span>"{prompt.text}"</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* Input area */}
-            <div className="relative">
-              <textarea
-                value={userInput}
-                onChange={(e) => {
-                  setUserInput(e.target.value);
-                  if (e.target.value.length > 20) { // Only analyze after a certain length to avoid too many updates
-                    analyzeInput(e.target.value);
-                  } else {
-                    setInputFeedback(''); // Clear feedback if input is too short
-                  }
-                }}
-                placeholder="Share your growth moment, challenge, or reflection..."
-                className="w-full p-4 border-2 border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none transition-all duration-300 focus:shadow-lg transform focus:scale-[1.02]"
-                rows="4"
-              />
-              <div className="flex justify-between items-center mt-3">
-                <div className="flex items-center space-x-2">
-                  <span className={`text-sm transition-colors duration-300 ${userInput.length > 450 ? 'text-orange-500' : 'text-gray-500'}`}>
-                    {userInput.length}/500
-                  </span>
-                  {userInput.length > 20 && ( // Only show ping animation after a certain length
-                    <div className="flex space-x-1">
-                      <div className="w-1 h-1 bg-green-400 rounded-full animate-ping"></div>
-                      <div className="w-1 h-1 bg-green-400 rounded-full animate-ping" style={{ animationDelay: '0.2s' }}></div>
-                      <div className="w-1 h-1 bg-green-400 rounded-full animate-ping" style={{ animationDelay: '0.4s' }}></div>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => simulateAI(userInput)}
-                  disabled={userInput.trim().length < 10}
-                  className={`bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-full font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg transition-all duration-300 flex items-center space-x-2 transform hover:scale-110 ${userInput.trim().length >= 10 ? 'animate-pulse-gentle' : ''}`}
-                >
-                  <Send className="w-4 h-4" />
-                  <span>Share</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Stats if returning user */}
-        {userStats.totalContributions > 0 && (
-          <div className="mt-8 bg-white/70 backdrop-blur-sm rounded-2xl p-6 animate-slide-up">
-            <h3 className="font-semibold text-gray-800 mb-4">Your Growth Journey</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center transform hover:scale-110 transition-transform duration-300">
-                <div className="text-2xl font-bold text-indigo-600">{userStats.totalContributions}</div>
-                <div className="text-sm text-gray-600">Contributions</div>
-              </div>
-              <div className="text-center transform hover:scale-110 transition-transform duration-300">
-                <div className="text-2xl font-bold text-purple-600">{userStats.currentStreak}</div>
-                <div className="text-sm text-gray-600">Day Streak</div>
-              </div>
-              <div className="text-center transform hover:scale-110 transition-transform duration-300">
-                <div className="text-2xl animate-bounce-gentle">{colorPaths[userStats.dominantColor]?.emoji}</div>
-                <div className="text-sm text-gray-600">Current Path</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
     </div>
   );
+};
 
-  const ProcessingScreen = () => (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Animated particles */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(15)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute animate-float opacity-40"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-              fontSize: `${1 + Math.random()}rem`
-            }}
-          >
-            {['🧠', '💡', '✨', '🔍', '⚡'][Math.floor(Math.random() * 5)]}
-          </div>
-        ))}
-      </div>
-
-      <div className="text-center space-y-6 relative z-10">
-        <div className="relative">
-          <div className="w-24 h-24 mx-auto">
-            <div className="absolute inset-0 border-4 border-indigo-200 rounded-full animate-spin-slow"></div>
-            <div className="absolute inset-2 border-4 border-purple-400 rounded-full animate-spin-reverse"></div>
-            <div className="absolute inset-4 border-4 border-pink-600 rounded-full animate-spin"></div>
-          </div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Sparkles className="w-6 h-6 text-indigo-600 animate-pulse" />
-          </div>
+// Welcome Screen Component (moved outside main component)
+const WelcomeScreen = ({ setCurrentStep, setSoundEnabled, soundEnabled, colorPaths, STEPS }) => (
+  <div className="welcome-container">
+    <AnimatedBackground type="welcome" />
+    <GlassCard className="welcome-card stagger-animation">
+      <div className="text-center space-y-6">
+        <div className="welcome-logo">
+          <div className="text-6xl mb-4 animate-float">🔮</div>
+          <h1 className="text-5xl font-bold bg-gradient-text mb-4">pobidoq</h1>
+          <p className="text-xl opacity-90 mb-2">Personal Growth AI • Proof of Behavior • Collective Wisdom</p>
+          <p className="text-sm opacity-70">Powered by Harmony Protocol & Simulated Aptos Blockchain</p>
         </div>
         
-        <div className="space-y-2 animate-fade-in">
-          <h3 className="text-3xl font-semibold text-gray-800 animate-pulse-text">Analyzing your contribution...</h3>
-          <p className="text-gray-600">AI is crafting personalized insights for your growth</p>
-        </div>
-        
-        <div className="flex justify-center space-x-2">
-          {[0, 1, 2].map(i => (
-            <div
-              key={i}
-              className="w-3 h-3 bg-indigo-400 rounded-full animate-bounce"
-              style={{ animationDelay: `${i * 0.3}s` }}
-            ></div>
-          ))}
-        </div>
-
-        {/* Progress indicators */}
-        <div className="space-y-3 mt-8">
-          {['Understanding context', 'Identifying patterns', 'Generating insights'].map((step, i) => (
-            <div key={i} className="flex items-center justify-center space-x-2 text-sm text-gray-600">
-              <div 
-                className={`w-2 h-2 rounded-full transition-colors duration-500 ${i <= 1 ? 'bg-green-400' : 'bg-gray-300'}`}
-                style={{ transitionDelay: `${i * 1000}ms` }}
-              ></div>
-              <span>{step}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-    </div>
-  );
-
-  const InsightScreen = () => (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-indigo-50 p-4 relative">
-      {/* Celebration overlay */}
-      {showCelebration && (
-        <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
-          <div className="text-8xl animate-celebration">🎉</div>
-        </div>
-      )}
-
-      <div className="max-w-4xl mx-auto py-8 relative z-10">
-        <div className="text-center mb-8 animate-slide-down">
-          <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4 animate-check-mark" />
-          <h2 className="text-3xl font-bold text-gray-800">Your Insight is Ready!</h2>
-        </div>
-
-        {/* Insight Card */}
-        <div className="bg-white rounded-3xl shadow-xl p-8 mb-8 transform animate-scale-up hover:shadow-2xl transition-all duration-500">
-          <div className="flex items-start space-x-4">
-            <div className="w-12 h-12 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse-gentle">
-              <Sparkles className="text-white w-6 h-6" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-800 mb-2">AI Insight</h3>
-              <p className="text-lg text-gray-700 italic leading-relaxed">
-                "{typingText}
-                {typingText.length < aiResponse.length && <span className="animate-blink">|</span>}
-                "
-              </p>
-            </div>
-          </div>
-          
-          <div className="mt-6 p-4 bg-gray-50 rounded-2xl animate-fade-in-up" style={{ animationDelay: '2s' }}>
-            <p className="text-sm text-gray-600 mb-2"><strong>Your contribution:</strong></p>
-            <p className="text-gray-800">{userInput}</p>
-          </div>
-        </div>
-
-        {/* Path Selection */}
-        <div className="bg-white rounded-3xl shadow-xl p-8 animate-slide-up">
-          <h3 className="text-2xl font-bold text-gray-800 mb-2 text-center">Choose Your Path Forward</h3>
-          <p className="text-gray-600 text-center mb-8">How do you wish to continue your journey?</p>
-          
-          <div className="grid md:grid-cols-2 gap-4">
+        <div className="archetype-preview">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 my-8">
             {Object.entries(colorPaths).map(([color, data], index) => (
-              <button
-                key={color}
-                onClick={() => selectPath(color)}
-                className={`group p-6 border-2 border-gray-200 rounded-2xl hover:border-gray-300 transition-all duration-300 text-left transform hover:scale-105 hover:shadow-xl animate-fade-in-up ${
-                  pulseElement === color ? 'animate-pulse-strong border-indigo-400' : ''
-                }`}
-                style={{ animationDelay: `${index * 0.2}s` }}
-              >
-                <div className="flex items-center space-x-4 mb-3">
-                  <div className="text-4xl group-hover:animate-bounce-gentle transition-transform duration-300">{data.emoji}</div>
-                  <div>
-                    <h4 className="font-bold text-xl text-gray-800 group-hover:text-indigo-600 transition-colors">{data.trait}</h4>
-                    <div className={`text-sm font-semibold bg-gradient-to-r ${data.gradient} bg-clip-text text-transparent`}>
-                      Path of {color}
-                    </div>
-                  </div>
-                </div>
-                <p className="text-sm text-gray-600 leading-relaxed group-hover:text-gray-800 transition-colors">{data.description}</p>
-                
-                {/* Hover particles */}
-                <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  {data.particles.split('').map((particle, i) => (
-                    <div
-                      key={i}
-                      className="absolute animate-float text-sm"
-                      style={{
-                        left: `${20 + i * 20}%`,
-                        top: `${10 + i * 15}%`,
-                        animationDelay: `${i * 0.2}s`
-                      }}
-                    >
-                      {particle}
-                    </div>
-                  ))}
-                </div>
-              </button>
+              <div key={color} className={`archetype-card stagger-${index + 1}`}>
+                <div className="text-3xl mb-2">{data.emoji}</div>
+                <div className="font-semibold text-sm">{data.name}</div>
+              </div>
             ))}
           </div>
         </div>
-      </div>
-
-    </div>
-  );
-
-  const CompleteScreen = () => (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-indigo-50 p-4 relative overflow-hidden">
-      {/* Floating celebration particles */}
-      {showFloatingEmojis.map(({ id, emoji, x, y, delay }) => (
-        <div
-          key={id}
-          className="fixed text-3xl pointer-events-none z-50 animate-float-celebration"
-          style={{
-            left: x,
-            top: y,
-            animationDelay: `${delay}ms`
-          }}
+        
+        <button 
+          className="btn-primary btn-large"
+          onClick={() => setCurrentStep(STEPS.ONBOARD)}
         >
-          {emoji}
-        </div>
-      ))}
+          ✨ Begin Your Journey
+          <ChevronRight className="ml-2" />
+        </button>
+      </div>
+    </GlassCard>
+    
+    <button 
+      className="sound-toggle"
+      onClick={() => setSoundEnabled(!soundEnabled)}
+    >
+      {soundEnabled ? <Volume2 /> : <VolumeX />}
+    </button>
+  </div>
+);
 
-      <div className="max-w-6xl mx-auto py-8 relative z-10">
-        <div className="text-center mb-8 animate-scale-up">
-          <div className="text-6xl mb-4 animate-bounce-celebration">🌟</div>
-          <h2 className="text-4xl font-bold text-gray-800 mb-2">Journey Complete!</h2>
-          <p className="text-gray-600">Your contribution has been added to your growth story</p>
+// Onboarding Screen Component (moved outside main component)
+const OnboardingScreen = ({ userProfile, setUserProfile, setCurrentStep, STEPS }) => (
+  <div className="onboard-container">
+    <AnimatedBackground type="onboard" />
+    <GlassCard className="onboard-card">
+      <h2 className="text-2xl font-bold text-center mb-6">🎯 Set Your Growth Intention</h2>
+      <p className="text-center text-gray-600 mb-6">What personal growth goals are you focusing on? (Optional)</p>
+      
+      <textarea
+        value={userProfile.goals}
+        onChange={(e) => setUserProfile(prev => ({ ...prev, goals: e.target.value }))}
+        placeholder="e.g., 'Building better communication skills', 'Practicing daily mindfulness', 'Developing emotional intelligence'..."
+        className="goal-input"
+        rows={3}
+        maxLength={200}
+        autoFocus
+      />
+      
+      <div className="flex justify-between items-center mt-4">
+        <span className="text-sm text-gray-500">{userProfile.goals.length}/200</span>
+        <div className="space-x-3">
+          <button 
+            className="btn-secondary"
+            onClick={() => {
+              setUserProfile(prev => ({ ...prev, goals: '' }));
+              setCurrentStep(STEPS.INPUT);
+            }}
+          >
+            Skip
+          </button>
+          <button 
+            className="btn-primary"
+            onClick={() => setCurrentStep(STEPS.INPUT)}
+          >
+            Continue
+            <ChevronRight className="ml-2" />
+          </button>
         </div>
+      </div>
+    </GlassCard>
+  </div>
+);
 
-        {/* Summary Card */}
-        <div className="bg-white rounded-3xl shadow-xl p-8 mb-8 transform hover:shadow-2xl transition-all duration-500 animate-slide-up">
-          <div className="grid md:grid-cols-3 gap-6 text-center">
-            <div className="transform hover:scale-110 transition-all duration-300 cursor-pointer">
-              <div className="text-4xl mb-2 animate-bounce-gentle">{colorPaths[selectedPath]?.emoji}</div>
-              <div className="font-semibold text-gray-800">Chosen Path</div>
-              <div className="text-sm text-gray-600">{colorPaths[selectedPath]?.trait}</div>
-            </div>
-            <div className="transform hover:scale-110 transition-all duration-300 cursor-pointer">
-              <div className="text-4xl mb-2 text-indigo-600 font-bold animate-count-up">{userStats.totalContributions}</div>
-              <div className="font-semibold text-gray-800">Total Contributions</div>
-              <div className="text-sm text-gray-600">Growing stronger daily</div>
-            </div>
-            <div className="transform hover:scale-110 transition-all duration-300 cursor-pointer">
-              <div className="text-4xl mb-2 animate-pulse">📈</div>
-              <div className="font-semibold text-gray-800">Progress Made</div>
-              <div className="text-sm text-gray-600">Insights gained</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Journey History */}
-        {journeyEntries.length > 0 && (
-          <div className="bg-white rounded-3xl shadow-xl p-8 mb-8 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
-            <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
-              <Book className="mr-3 animate-pulse-gentle" />
-              Your Growth Story
-            </h3>
-            <div className="space-y-4 max-h-96 overflow-y-auto custom-scrollbar">
-              {journeyEntries.map((entry, index) => (
-                <div 
-                  key={entry.id} 
-                  className="border border-gray-200 rounded-2xl p-4 hover:border-indigo-300 hover:shadow-md transition-all duration-300 transform hover:scale-[1.02] animate-slide-in-left"
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-2xl animate-bounce-gentle">{colorPaths[entry.path]?.emoji}</span>
-                      <span className="font-semibold text-gray-800">Entry #{journeyEntries.length - index}</span>
-                    </div>
-                    <span className="text-sm text-gray-500">{entry.timestamp}</span>
-                  </div>
-                  <p className="text-gray-700 mb-2">{entry.input}</p>
-                  <p className="text-sm text-gray-600 italic flex items-center">
-                    <Lightbulb className="w-4 h-4 mr-1 text-yellow-500" />
-                    {entry.insight}
-                  </p>
-                </div>
-              ))}
-            </div>
+// Input Screen Component (moved outside main component)
+const InputScreen = ({ 
+  userProfile, 
+  currentSession, 
+  setCurrentSession, 
+  processReflection 
+}) => (
+  <div className="input-container">
+    <AnimatedBackground type="input" />
+    <div className="input-layout">
+      <GlassCard className="input-card">
+        <h2 className="section-title">
+          <BookOpen className="mr-2" />
+          📝 Describe Your Personal Growth Action
+        </h2>
+        
+        {userProfile.goals && (
+          <div className="goal-display">
+            <span className="text-sm text-gray-600">Current Goal:</span>
+            <p className="font-medium">{userProfile.goals}</p>
           </div>
         )}
-
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center animate-slide-up" style={{ animationDelay: '0.5s' }}>
-          <button
-            onClick={startNew}
-            className="group bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-4 rounded-full text-lg font-semibold shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 flex items-center justify-center space-x-2 animate-pulse-gentle"
+        
+        <textarea
+          value={currentSession.input}
+          onChange={(e) => setCurrentSession(prev => ({ ...prev, input: e.target.value }))}
+          placeholder="Share what you've done today to grow personally... (e.g., 'I meditated for 10 minutes', 'I had a difficult conversation with my partner', 'I read about emotional intelligence')"
+          className="main-input"
+          rows={4}
+          maxLength={500}
+          autoFocus
+        />
+        
+        <div className="input-footer">
+          <span className="character-count">{currentSession.input.length}/500</span>
+          <button 
+            className="btn-primary"
+            onClick={processReflection}
+            disabled={currentSession.input.trim().length < 10}
           >
-            <RefreshCw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
-            <span>New Contribution</span>
-          </button>
-          <button className="group border-2 border-indigo-600 text-indigo-600 px-8 py-4 rounded-full text-lg font-semibold hover:bg-indigo-50 transition-all duration-300 flex items-center justify-center space-x-2 hover:scale-105">
-            <BarChart3 className="w-5 h-5 group-hover:animate-bounce" />
-            <span>View Analytics</span>
+            ✨ Pob My Action
           </button>
         </div>
-      </div>
-
+      </GlassCard>
+      
+      {userProfile.contributions.length > 0 && (
+        <GlassCard className="stats-sidebar">
+          <h3 className="text-lg font-semibold mb-4">📊 Your Progress</h3>
+          <div className="stats-grid">
+            <div className="stat-item">
+              <div className="stat-number">{userProfile.totalContributions}</div>
+              <div className="stat-label">Total</div>
+            </div>
+            <div className="stat-item">
+              <div className="stat-number">{userProfile.sessionActions}</div>
+              <div className="stat-label">Today</div>
+            </div>
+          </div>
+        </GlassCard>
+      )}
     </div>
-  );
+  </div>
+);
 
-  // Render appropriate screen
-  if (currentStep === 'welcome') return <WelcomeScreen />;
-  if (currentStep === 'input') return <InputScreen />;
-  if (isProcessing) return <ProcessingScreen />;
-  if (currentStep === 'insight') return <InsightScreen />;
-  if (currentStep === 'complete') return <CompleteScreen />;
+// Processing Screen Component (moved outside main component)
+const ProcessingScreen = () => (
+  <div className="processing-container">
+    <AnimatedBackground type="processing" />
+    <GlassCard className="processing-card">
+      <div className="processing-content">
+        <div className="processing-spinner">
+          <Loader2 className="animate-spin w-12 h-12 text-primary" />
+        </div>
+        <h3 className="text-xl font-semibold mt-4">🔍 Analyzing Your Action</h3>
+        <p className="text-gray-600 mt-2">Node is capturing and verifying your contribution...</p>
+        <div className="processing-dots">
+          <div className="dot animate-bounce" style={{animationDelay: '0s'}}></div>
+          <div className="dot animate-bounce" style={{animationDelay: '0.2s'}}></div>
+          <div className="dot animate-bounce" style={{animationDelay: '0.4s'}}></div>
+        </div>
+      </div>
+    </GlassCard>
+  </div>
+);
+
+// Insight Screen Component (moved outside main component)
+const InsightScreen = ({ 
+  currentSession, 
+  colorPaths, 
+  animationPhase, 
+  setCurrentStep, 
+  STEPS 
+}) => (
+  <div className="insight-container">
+    <AnimatedBackground type={currentSession.color?.toLowerCase() || 'default'} />
+    <div className="insight-layout">
+      <GlassCard className={`insight-card stagger-${animationPhase}`}>
+        {/* POB Confirmation */}
+        <div className="result-section confirmation-section">
+          <h3 className="flex items-center text-xl font-bold text-green-700 mb-3">
+            <CheckCircle2 className="mr-2" />
+            ✅ Action Recorded!
+          </h3>
+          <p><strong>Proof of Behaviour (P.O.B.) established.</strong> Your growth contribution has been captured and verified.</p>
+        </div>
+
+        {/* AI Insight */}
+        <div className="result-section ai-insight-section">
+          <h3 className="flex items-center text-xl font-bold mb-3">
+            <Sparkles className="mr-2 text-yellow-500" />
+            🤖 AI Insight into Your Pob:
+          </h3>
+          <p className="insight-text">{currentSession.insight}</p>
+        </div>
+
+        {/* Archetype Display */}
+        <div className="archetype-section">
+          <h3 className="text-xl font-bold mb-4">🎨 Your Current Dominant Color</h3>
+          <div className="archetype-display">
+            <div className="archetype-emoji">{colorPaths[currentSession.color]?.emoji}</div>
+            <div className="archetype-name">{colorPaths[currentSession.color]?.name}</div>
+            <div className="archetype-description">Currently resonating with {colorPaths[currentSession.color]?.name.toLowerCase()}</div>
+          </div>
+        </div>
+
+        {/* Blockchain Section */}
+        <div className="result-section blockchain-section">
+          <h3 className="text-lg font-bold mb-3">⛓️ Simulated Aptos Blockchain Integration</h3>
+          <p><strong>Transaction Hash:</strong> <code className="tx-hash">{currentSession.txHash}</code></p>
+          <a 
+            href={`https://explorer.aptoslabs.com/txn/${currentSession.txHash}?network=mainnet`}
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="blockchain-link"
+          >
+            <Eye className="mr-1" />
+            🔍 View Transaction on Aptos Explorer
+          </a>
+        </div>
+
+        {/* Ethics Report */}
+        <div className="result-section ethics-section">
+          <h3 className="text-lg font-bold mb-3">🛡️ Harmony Protocol Ethics Report</h3>
+          <p className="ethics-text">{currentSession.ethicsReport}</p>
+        </div>
+
+        {/* Continue Button */}
+        <button 
+          className="btn-primary btn-large mt-6"
+          onClick={() => setCurrentStep(STEPS.JUDGMENT)}
+        >
+          Continue to Path Selection
+        </button>
+      </GlassCard>
+    </div>
+  </div>
+);
+
+// Judgment Screen Component (moved outside main component)
+const JudgmentScreen = ({ 
+  currentSession, 
+  colorPaths, 
+  selectPath 
+}) => (
+  <div className="judgment-container">
+    <AnimatedBackground type={currentSession.color?.toLowerCase() || 'default'} />
+    <GlassCard className="judgment-card">
+      <h2 className="section-title mb-6">🔮 Choose Your Doq Intention</h2>
+      <p className="text-center text-gray-600 mb-8">Select the path that best represents your intention behind this action:</p>
+      
+      <div className="orb-container">
+        {Object.entries(colorPaths).map(([colorKey, data]) => (
+          <button
+            key={colorKey}
+            className={`orb orb-${colorKey.toLowerCase()} ${colorKey === currentSession.color ? 'orb-suggested' : ''}`}
+            onClick={() => selectPath(colorKey)}
+          >
+            <div className="orb-emoji">{data.emoji}</div>
+            <div className="orb-name">{data.name}</div>
+            <div className="orb-explanation">{data.explanation}</div>
+            {colorKey === currentSession.color && (
+              <div className="suggested-badge">Suggested Path</div>
+            )}
+          </button>
+        ))}
+      </div>
+    </GlassCard>
+  </div>
+);
+
+// Dashboard Screen Component (moved outside main component)
+const DashboardScreen = ({ 
+  userProfile, 
+  currentSession, 
+  communityData, 
+  colorPaths, 
+  startNew, 
+  setCurrentStep, 
+  STEPS 
+}) => (
+  <div className="dashboard-container">
+    <AnimatedBackground type={userProfile.currentPath?.toLowerCase() || 'default'} />
+    <div className="dashboard-layout">
+      <GlassCard className="dashboard-main">
+        <h2 className="section-title mb-6">📊 Your Journey Insights Dashboard</h2>
+        
+        <div className="dashboard-grid">
+          {/* Current Path Card */}
+          <div className="dashboard-card current-path-card">
+            <h3 className="card-title">🎨 Current Path</h3>
+            <div className="current-path-display">
+              <div className="path-emoji">{colorPaths[userProfile.currentPath]?.emoji}</div>
+              <div className="path-name">{colorPaths[userProfile.currentPath]?.name}</div>
+              <div className="path-trait">Currently resonating with {colorPaths[userProfile.currentPath]?.name.toLowerCase()}</div>
+            </div>
+            <div className="stats-mini-grid">
+              <div className="stat-mini">
+                <div className="stat-number">{userProfile.totalContributions}</div>
+                <div className="stat-label">Total Contributions</div>
+              </div>
+              <div className="stat-mini">
+                <div className="stat-number">{userProfile.sessionActions}</div>
+                <div className="stat-label">This Session</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Latest Contribution Card */}
+          <div className="dashboard-card latest-card">
+            <h3 className="card-title">📝 Latest Contribution</h3>
+            <div className="latest-content">
+              <p className="latest-text">{currentSession.input}</p>
+              <div className="latest-insight">
+                <strong>AI Insight:</strong>
+                <p className="insight-preview">{currentSession.insight}</p>
+              </div>
+              <div className="latest-intention">
+                <strong>Your Intention:</strong>
+                <span className="intention-display">
+                  {colorPaths[currentSession.chosenPath]?.emoji} {colorPaths[currentSession.chosenPath]?.name}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Collective Wisdom Card */}
+          <div className="dashboard-card collective-card">
+            <h3 className="card-title flex items-center">
+              <Users className="mr-2" />
+              🌍 Collective Wisdom
+            </h3>
+            <div className="collective-content">
+              <div className="collective-insight">
+                <strong>Community Focus:</strong>
+                <p>{communityData.collectiveInsight}</p>
+              </div>
+              <div className="collective-trait">
+                <strong>Emerging Trait:</strong>
+                <span className="trait-highlight">{communityData.dominantTrait}</span>
+              </div>
+              <div className="collective-stats">
+                <div className="stat-mini">
+                  <div className="stat-number">{communityData.pathPercentage}%</div>
+                  <div className="stat-label">Share Your Path</div>
+                </div>
+                <div className="stat-mini">
+                  <div className="stat-number">{communityData.communityAvg}</div>
+                  <div className="stat-label">Community Avg</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Epic Journey Section */}
+        <div className="epic-section">
+          <h3 className="section-title">📜 Your Epic So Far</h3>
+          <div className="epic-list">
+            {userProfile.epicEntries.length === 0 ? (
+              <div className="epic-empty">
+                <p>Start your journey by recording your first action above!</p>
+              </div>
+            ) : (
+              userProfile.epicEntries.slice(0, 10).map((entry, index) => (
+                <div key={entry.id} className="epic-item">
+                  <div className="epic-header">
+                    <span className="epic-emoji">{colorPaths[entry.color]?.emoji}</span>
+                    <span className="epic-intention">{entry.intention}</span>
+                    <span className="epic-time">{entry.timestamp}</span>
+                  </div>
+                  <div className="epic-text">{entry.input}</div>
+                  <div className="epic-insight">💡 {entry.insight}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="dashboard-actions">
+          <button 
+            className="btn-primary btn-large"
+            onClick={startNew}
+          >
+            <RefreshCw className="mr-2" />
+            ✨ New Contribution
+          </button>
+          <button 
+            className="btn-secondary"
+            onClick={() => setCurrentStep(STEPS.ONBOARD)}
+          >
+            🎯 Update Goals
+          </button>
+        </div>
+      </GlassCard>
+    </div>
+  </div>
+);
+
+// Color archetypes with enhanced properties
+const colorPaths = {
+  Red: {
+    emoji: '🔴',
+    name: 'Passion & Action',
+    trait: 'Universe',
+    hex: '#e53e3e',
+    explanation: "Power through action - Transform experience into bold, decisive steps toward goals."
+  },
+  Green: {
+    emoji: '🟢', 
+    name: 'Growth & Harmony',
+    trait: 'Game',
+    hex: '#38a169',
+    explanation: "Nurture growth - Let actions be seeds for sustainable, harmonious development."
+  },
+  Blue: {
+    emoji: '🔵',
+    name: 'Wisdom & Reflection', 
+    trait: 'Race',
+    hex: '#3182ce',
+    explanation: "Deepen wisdom - Use experiences to understand yourself and others more profoundly."
+  },
+  Yellow: {
+    emoji: '🟡',
+    name: 'Joy & Creativity',
+    trait: 'Step', 
+    hex: '#d69e2e',
+    explanation: "Spark creativity - Channel moments into innovative approaches and joyful expression."
+  }
 };
 
-export default PobidoqApp;
+// Enhanced AI insights
+const aiInsights = [
+  "This action shows your commitment to inner peace. Consider how this stillness might ripple into other areas of your life.",
+  "Taking time for self-reflection demonstrates emotional maturity. What patterns are you noticing about yourself?",
+  "Growth often happens in uncomfortable moments. How did this challenge expand your comfort zone?",
+  "Your willingness to learn shows a growth mindset. What's one key insight you'll carry forward?",
+  "This action reflects your values in motion. How does it align with who you're becoming?",
+  "Small consistent actions create lasting change. What would happen if you doubled down on this habit?",
+  "You're developing emotional intelligence through real experience. How might this serve your relationships?",
+  "This moment of courage creates new possibilities. What doors might this action open for you?",
+  "Your mindful approach creates space for deeper understanding. What patterns are emerging?",
+  "This reflects remarkable resilience. How will you apply this strength moving forward?"
+];
+
+const ethicsReports = [
+  "✅ Ethical alignment verified: This insight promotes authentic self-development without manipulation.",
+  "🔍 Bias check passed: AI analysis maintains neutrality while encouraging growth.", 
+  "🛡️ Privacy protected: Your data remains secure while benefiting from collective wisdom.",
+  "⚖️ Fairness confirmed: Insights generated without cultural or demographic bias."
+];
+
+const collectiveInsights = [
+  "The community is currently focused on building stronger emotional resilience and authentic communication.",
+  "Today's collective energy centers around mindful action and compassionate self-reflection.",
+  "The network shows increased activity in courage-building and stepping outside comfort zones.",
+  "Community patterns indicate a shared focus on sustainable growth and inner wisdom development."
+];
+
+const collectiveTraits = ["Mindful Courage", "Authentic Growth", "Compassionate Wisdom", "Creative Resilience"];
+
+// Flow constants
+const STEPS = {
+  WELCOME: 'welcome',
+  ONBOARD: 'onboard', 
+  INPUT: 'input',
+  PROCESSING: 'processing',
+  INSIGHT: 'insight',
+  JUDGMENT: 'judgment',
+  DASHBOARD: 'dashboard'
+};
+
+export default function PobidoqApp() {
+  // Core state
+  const [currentStep, setCurrentStep] = useState(STEPS.WELCOME);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [animationPhase, setAnimationPhase] = useState(0);
+  
+  // User data
+  const [userProfile, setUserProfile] = useState({
+    goals: '',
+    contributions: [],
+    totalContributions: 847,
+    currentPath: null,
+    epicEntries: [],
+    sessionActions: 0
+  });
+  
+  // Current session
+  const [currentSession, setCurrentSession] = useState({
+    input: '',
+    insight: '',
+    color: '',
+    txHash: '',
+    ethicsReport: '',
+    chosenPath: '',
+    processing: false
+  });
+  
+  // Community data (simulated)
+  const [communityData, setCommunityData] = useState({
+    collectiveInsight: '',
+    dominantTrait: '',
+    pathPercentage: 0,
+    communityAvg: 4.2
+  });
+
+  // Utility functions
+  const generateTxHash = useCallback(() => {
+    const chars = '0123456789abcdef';
+    let hash = '0x';
+    for (let i = 0; i < 64; i++) {
+      hash += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return hash;
+  }, []);
+
+  const assignColor = useCallback((input) => {
+    const text = input.toLowerCase();
+    if (/past|memory|relationship|history|connection|story/.test(text)) return 'Red';
+    if (/future|goal|plan|strategy|game|win|achieve/.test(text)) return 'Green';  
+    if (/focus|discipline|work|master|habit|complete|wisdom/.test(text)) return 'Blue';
+    if (/feel|emotion|creative|joy|wonder|heart|express/.test(text)) return 'Yellow';
+    return ['Red', 'Green', 'Blue', 'Yellow'][Math.floor(Math.random() * 4)];
+  }, []);
+
+  const generateAIInsight = useCallback((input) => {
+    const lowerInput = input.toLowerCase();
+    if (/doubt|stuck|difficult/.test(lowerInput)) {
+      return "Acknowledging uncertainty is already progress. What small step feels possible right now?";
+    }
+    if (/team|others|help|support/.test(lowerInput)) {
+      return "Supporting others often reveals our own hidden strengths and capacity for leadership.";
+    }
+    return aiInsights[Math.floor(Math.random() * aiInsights.length)];
+  }, []);
+
+  // Process reflection 
+  const processReflection = useCallback(async () => {
+    if (currentSession.input.trim().length < 10) {
+      alert('Please write at least 10 characters for meaningful insights.');
+      return;
+    }
+
+    setCurrentSession(prev => ({ ...prev, processing: true }));
+    setCurrentStep(STEPS.PROCESSING);
+    SoundManager.play('transition', soundEnabled);
+    
+    // Simulate AI processing with staggered reveals
+    setTimeout(() => {
+      const color = assignColor(currentSession.input);
+      const insight = generateAIInsight(currentSession.input);
+      const txHash = generateTxHash();
+      const ethics = ethicsReports[Math.floor(Math.random() * ethicsReports.length)];
+      
+      setCurrentSession(prev => ({
+        ...prev,
+        color,
+        insight, 
+        txHash,
+        ethicsReport: ethics,
+        processing: false
+      }));
+      
+      // Update community data
+      setCommunityData({
+        collectiveInsight: collectiveInsights[Math.floor(Math.random() * collectiveInsights.length)],
+        dominantTrait: collectiveTraits[Math.floor(Math.random() * collectiveTraits.length)],
+        pathPercentage: Math.floor(Math.random() * 30) + 15,
+        communityAvg: (Math.random() * 2 + 3).toFixed(1)
+      });
+      
+      setCurrentStep(STEPS.INSIGHT);
+      setAnimationPhase(1);
+      SoundManager.play('insight', soundEnabled);
+    }, 2500);
+  }, [currentSession.input, assignColor, generateAIInsight, generateTxHash, soundEnabled]);
+
+  // Select DOQ path
+  const selectPath = useCallback((pathColor) => {
+    SoundManager.play(colorPaths[pathColor].trait.toLowerCase(), soundEnabled);
+    
+    const newEntry = {
+      id: Date.now(),
+      input: currentSession.input,
+      insight: currentSession.insight,
+      color: pathColor,
+      chosenPath: pathColor,
+      intention: colorPaths[pathColor].name,
+      timestamp: new Date().toLocaleString(),
+      txHash: currentSession.txHash
+    };
+    
+    setUserProfile(prev => ({
+      ...prev,
+      contributions: [newEntry, ...prev.contributions],
+      epicEntries: [newEntry, ...prev.epicEntries], 
+      totalContributions: prev.totalContributions + 1,
+      sessionActions: prev.sessionActions + 1,
+      currentPath: pathColor
+    }));
+    
+    setCurrentSession(prev => ({ ...prev, chosenPath: pathColor }));
+    setCurrentStep(STEPS.DASHBOARD);
+    setAnimationPhase(2);
+    SoundManager.play('complete', soundEnabled);
+  }, [currentSession, soundEnabled]);
+
+  // Start new reflection
+  const startNew = useCallback(() => {
+    setCurrentSession({
+      input: '',
+      insight: '',
+      color: '',
+      txHash: '',
+      ethicsReport: '',
+      chosenPath: '',
+      processing: false
+    });
+    setCurrentStep(STEPS.INPUT);
+    setAnimationPhase(0);
+    SoundManager.play('transition', soundEnabled);
+  }, [soundEnabled]);
+
+  // Set dynamic CSS variables for theming
+  useEffect(() => {
+    if (currentSession.color) {
+      document.documentElement.className = `theme-${currentSession.color.toLowerCase()}`;
+    }
+  }, [currentSession.color]);
+
+  // Main render
+  return (
+    <div className="app-container">
+      {currentStep === STEPS.WELCOME && (
+        <WelcomeScreen 
+          setCurrentStep={setCurrentStep}
+          setSoundEnabled={setSoundEnabled}
+          soundEnabled={soundEnabled}
+          colorPaths={colorPaths}
+          STEPS={STEPS}
+        />
+      )}
+      {currentStep === STEPS.ONBOARD && (
+        <OnboardingScreen 
+          userProfile={userProfile}
+          setUserProfile={setUserProfile}
+          setCurrentStep={setCurrentStep}
+          STEPS={STEPS}
+        />
+      )}
+      {currentStep === STEPS.INPUT && (
+        <InputScreen 
+          userProfile={userProfile}
+          currentSession={currentSession}
+          setCurrentSession={setCurrentSession}
+          processReflection={processReflection}
+        />
+      )}
+      {currentStep === STEPS.PROCESSING && <ProcessingScreen />}
+      {currentStep === STEPS.INSIGHT && (
+        <InsightScreen 
+          currentSession={currentSession}
+          colorPaths={colorPaths}
+          animationPhase={animationPhase}
+          setCurrentStep={setCurrentStep}
+          STEPS={STEPS}
+        />
+      )}
+      {currentStep === STEPS.JUDGMENT && (
+        <JudgmentScreen 
+          currentSession={currentSession}
+          colorPaths={colorPaths}
+          selectPath={selectPath}
+        />
+      )}
+      {currentStep === STEPS.DASHBOARD && (
+        <DashboardScreen 
+          userProfile={userProfile}
+          currentSession={currentSession}
+          communityData={communityData}
+          colorPaths={colorPaths}
+          startNew={startNew}
+          setCurrentStep={setCurrentStep}
+          STEPS={STEPS}
+        />
+      )}
+    </div>
+  );
+}
