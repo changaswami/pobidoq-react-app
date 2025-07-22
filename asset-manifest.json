@@ -1,13 +1,13 @@
 {
   "files": {
-    "main.css": "/pobidoq-react-app/static/css/main.225624b8.css",
-    "main.js": "/pobidoq-react-app/static/js/main.bf93220f.js",
+    "main.css": "/pobidoq-react-app/static/css/main.b68a4e46.css",
+    "main.js": "/pobidoq-react-app/static/js/main.32c931a1.js",
     "index.html": "/pobidoq-react-app/index.html",
-    "main.225624b8.css.map": "/pobidoq-react-app/static/css/main.225624b8.css.map",
-    "main.bf93220f.js.map": "/pobidoq-react-app/static/js/main.bf93220f.js.map"
+    "main.b68a4e46.css.map": "/pobidoq-react-app/static/css/main.b68a4e46.css.map",
+    "main.32c931a1.js.map": "/pobidoq-react-app/static/js/main.32c931a1.js.map"
   },
   "entrypoints": [
-    "static/css/main.225624b8.css",
-    "static/js/main.bf93220f.js"
+    "static/css/main.b68a4e46.css",
+    "static/js/main.32c931a1.js"
   ]
 }
